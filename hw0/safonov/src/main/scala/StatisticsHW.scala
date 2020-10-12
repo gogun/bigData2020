@@ -1,6 +1,6 @@
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.expressions.Window
-import org.apache.spark.sql.functions.{asc, callUDF, col, desc, lit, row_number, stddev}
+import org.apache.spark.sql.functions.{asc, callUDF, col, desc, lit, row_number, stddev, udf}
 
 object StatisticsHW {
   def main(args: Array[String]) {
@@ -73,7 +73,47 @@ object StatisticsHW {
     println(settings.stat.corr("price", "number_of_reviews", "pearson"))
 
     //Найти гео квадрат размером 5км на 5км с самой высокой средней стоимостью жилья
+    // реализация взята с https://github.com/mumoshu/geohash-scala
+    val encode = ( lat:Double, lng:Double, precision:Int )=> {
+      val base32 = "0123456789bcdefghjkmnpqrstuvwxyz"
+      var (minLat,maxLat) = (-90.0,90.0)
+      var (minLng,maxLng) = (-180.0,180.0)
+      val bits = List(16,8,4,2,1)
 
+      (0 until precision).map{ p => {
+        base32 apply (0 until 5).map{ i => {
+          if (((5 * p) + i) % 2 == 0) {
+            val mid = (minLng+maxLng)/2.0
+            if (lng > mid) {
+              minLng = mid
+              bits(i)
+            } else {
+              maxLng = mid
+              0
+            }
+          } else {
+            val mid = (minLat+maxLat)/2.0
+            if (lat > mid) {
+              minLat = mid
+              bits(i)
+            } else {
+              maxLat = mid
+              0
+            }
+          }
+        }}.reduceLeft( (a,b) => a|b )
+      }}.mkString("")
+    }
 
+    val encode_udf = udf(encode)
+    val settings_geohash = settings
+      .withColumn("geoHash", encode_udf(col("latitude"), col("longitude"), lit(5)))
+      .groupBy("geoHash")
+      .mean("price")
+      .orderBy(desc("avg(price)"))
+      .first()
+
+    val point = GeoHash.decode(settings_geohash.get(0).toString)
+    println("The most expensive area 5x5 km in New-York in square with center in "+ point + " with mean price: " + settings_geohash.get(1))
   }
 }
