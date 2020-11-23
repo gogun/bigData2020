@@ -21,7 +21,6 @@ df = df.na.drop()
 df = df
   .withColumn("id", df("id").cast(LongType))
   .withColumn("target", df("target").cast(IntegerType))
-
 df.show()
 //pipeline
 val regexTokenizer = new RegexTokenizer()
